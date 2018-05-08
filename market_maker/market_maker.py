@@ -66,7 +66,7 @@ class ExchangeInterface:
             self.bitmex.cancel([order['orderID'] for order in orders])
 
         sleep(settings.API_REST_INTERVAL)
-
+    #
     def get_portfolio(self):
         contracts = settings.CONTRACTS
         portfolio = {}
