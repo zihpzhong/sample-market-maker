@@ -235,16 +235,17 @@ class OrderManager:
         self.running_qty = self.exchange.get_delta()
         tickLog = self.exchange.get_instrument()['tickLog']
         self.start_XBt = margin["marginBalance"]
+        logger.info(" 合理交易价格: %d" % self.instrument['fairPrice'])
 
         logger.info("Current XBT Balance: %.6f" % XBt_to_XBT(self.start_XBt))
-        logger.info("Current Contract Position: %d" % self.running_qty)
+        logger.info("Current Contract Position(当前合约持仓): %d" % self.running_qty)
         if settings.CHECK_POSITION_LIMITS:
             logger.info("Position limits: %d/%d" % (settings.MIN_POSITION, settings.MAX_POSITION))
         if position['currentQty'] != 0:
-            logger.info("Avg Cost Price: %.*f" % (tickLog, float(position['avgCostPrice'])))
-            logger.info("Avg Entry Price: %.*f" % (tickLog, float(position['avgEntryPrice'])))
-        logger.info("Contracts Traded This Run: %d" % (self.running_qty - self.starting_qty))
-        logger.info("Total Contract Delta: %.4f XBT" % self.exchange.calc_delta()['spot'])
+            logger.info("Avg Cost Price(平均成本价格): %.*f" % (tickLog, float(position['avgCostPrice'])))
+            logger.info("Avg Entry Price(平均入场价): %.*f" % (tickLog, float(position['avgEntryPrice'])))
+        logger.info("Contracts Traded This Run(合约交易此运行): %d" % (self.running_qty - self.starting_qty))
+        logger.info("Total Contract Delta(总合同增量): %.4f XBT" % self.exchange.calc_delta()['spot'])
 
     def get_ticker(self):
         ticker = self.exchange.get_ticker()
@@ -300,15 +301,17 @@ class OrderManager:
             # Same for buys.
             if index < 0 and start_position > self.start_position_sell:
                 start_position = self.start_position_buy
-
+        """ 返回出价金额 """
+        logger.info(" start_position: %d , 返回出价金额 : %d " % (start_position, math.toNearest(start_position * (1 + settings.INTERVAL) ** index, self.instrument['tickSize'])))
+        #logger.info("  返回出价金额 :  %d " % math.toNearest(start_position * (1 + settings.INTERVAL) ** index, self.instrument['tickSize']))
         return math.toNearest(start_position * (1 + settings.INTERVAL) ** index, self.instrument['tickSize'])
 
     ###
-    # Orders
+    # Orders 订单
     ###
 
     def place_orders(self):
-        """Create order items for use in convergence."""
+        """Create order items for use in convergence. 创建用于收敛的订单项目"""
 
         buy_orders = []
         sell_orders = []
@@ -326,14 +329,28 @@ class OrderManager:
 
     def prepare_order(self, index):
         """Create an order object."""
-
+        position = self.exchange.get_position()
         if settings.RANDOM_ORDER_SIZE is True:
             quantity = random.randint(settings.MIN_ORDER_SIZE, settings.MAX_ORDER_SIZE)
         else:
             quantity = settings.ORDER_START_SIZE + ((abs(index) - 1) * settings.ORDER_STEP_SIZE)
 
-        price = self.get_price_offset(index)
 
+        price = self.get_price_offset(index)
+        if index < 0:
+            logger.info("avgCostPrice : %d  %d " % (float(position['avgCostPrice']), price))
+            if(float(position['avgCostPrice']) > price):
+                return {'price': price, 'orderQty': quantity, 'side': "Buy"}
+            else:
+                return {'price': 9450, 'orderQty': quantity, 'side': "Buy"}
+            logger.info("生成订单Buy：%d ,  %d " % (price, self.running_qty))
+        else:
+            if (float(position['avgCostPrice']) < price):
+                return {'price': price, 'orderQty': quantity, 'side': "Sell"}
+            else:
+                return {'price': 9450, 'orderQty': quantity, 'side':  "Sell"}
+            logger.info("生成订单Buy：%d ,  %d " % (price, self.running_qty))
+            logger.info("生成订单Sell：%d,  %d " % (price, self.running_qty))
         return {'price': price, 'orderQty': quantity, 'side': "Buy" if index < 0 else "Sell"}
 
     def converge_orders(self, buy_orders, sell_orders):
@@ -418,7 +435,7 @@ class OrderManager:
             self.exchange.cancel_bulk_orders(to_cancel)
 
     ###
-    # Position Limits
+    # Position Limits 位置限制
     ###
 
     def short_position_limit_exceeded(self):
@@ -440,7 +457,7 @@ class OrderManager:
     ##
 
     def sanity_check(self):
-        """Perform checks before placing orders."""
+        """Perform checks before placing orders. 在下订单前进行检查。"""
 
         # Check if OB is empty - if so, can't quote.
         self.exchange.check_if_orderbook_empty()
